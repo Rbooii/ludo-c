@@ -2,8 +2,61 @@
 #include <time.h>
 #include <string.h>
 #include <stdlib.h>
-#include <conio.h>
-#include <windows.h>
+#include <unistd.h>
+#include <termios.h>
+
+/* =========================================================
+ *  Windows -> macOS/Linux compatibility layer
+ *  (replaces <windows.h> and <conio.h> usage)
+ * ========================================================= */
+static struct termios orig_termios;
+
+static void resetTermios(void) {
+    tcsetattr(STDIN_FILENO, TCSANOW, &orig_termios);
+}
+
+/* Puts the terminal in raw(-ish) mode: no line buffering, no echo,
+ * so a single keypress can be read immediately (like Windows getch). */
+static void initTermios(void) {
+    struct termios newt;
+    tcgetattr(STDIN_FILENO, &orig_termios);
+    newt = orig_termios;
+    newt.c_lflag &= ~(ICANON | ECHO);
+    newt.c_cc[VMIN] = 1;
+    newt.c_cc[VTIME] = 0;
+    tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+}
+
+/* Drop-in replacement for conio.h's getch() */
+static char getch(void) {
+    char ch;
+    initTermios();
+    ch = (char)getchar();
+    resetTermios();
+    return ch;
+}
+
+/* Drop-in replacement for windows.h's Sleep(ms) */
+static void Sleep(unsigned int ms) {
+    usleep(ms * 1000);
+}
+
+/* Drop-in replacement for system("PAUSE") */
+static void pauseProgram(void) {
+    printf("Press any key to continue . . . ");
+    fflush(stdout);
+    getch();
+    printf("\n");
+}
+
+/* Drop-in replacement for system("CLS") */
+static void clearScreen(void) {
+    /* ANSI escape sequence: clear screen + move cursor to home.
+     * Works in any modern macOS/Linux terminal without spawning a shell. */
+    printf("\033[2J\033[H");
+    fflush(stdout);
+}
+/* ========================================================= */
 
 typedef struct {
 	short masuk;
@@ -68,7 +121,7 @@ int eliminasi(Team *, short);
 
 int main () {
 	menu();
-	system("CLS");
+	clearScreen();
 	printf("Thanks for playing!\n");
 	return 0;
 }
@@ -77,7 +130,7 @@ void menu() {
 	short pil = 1;
 	char cmd;
 	while (1) {
-		system("CLS");
+		clearScreen();
 		printf("==============================\n");
 		printf("+             LUDO           +\n");
 		printf("==============================\n");
@@ -103,6 +156,7 @@ void menu() {
 				}
 				break;
 			case '\r':
+			case '\n':
 				if(pil == 1) {
 					mulai();
 				} else if (pil == 2) {
@@ -118,7 +172,7 @@ void menu() {
 short checkExit() {
 	char cmd;
 	do {
-		system("CLS");
+		clearScreen();
 		printf("Are you sure you want to exit?\nAny progress won't be saved! (y/n)\n>> ");
 		cmd = getch();
 	} while (cmd != 'y' && cmd != 'n');
@@ -199,10 +253,10 @@ void mulai() {
 	yellow = set(2);
 	blue = set(3);
 	red = set(4);
-	system("CLS");
+	clearScreen();
 	printf("Game start!\n");
 	Sleep(1500);
-	system("CLS");
+	clearScreen();
 	short pemenang;
 	srand(time(NULL));
 	Team *Player, *Bot1;
@@ -259,7 +313,7 @@ void mulai() {
 		case 4: printf("RED WIN THE ROUND!\n"); break;
 		default: break;
 	}
-	system("PAUSE");
+	pauseProgram();
 	return;
 }
 
@@ -285,7 +339,7 @@ void botPawn(Team *p) {
 }
 
 void botMaju(Team *p, short kocokan) {
-    system("CLS");
+    clearScreen();
     print();
     if (p->otsd == 0) {
         // No pawn to move — nothing to do
@@ -332,7 +386,7 @@ void botMaju(Team *p, short kocokan) {
 
 void botMain(Team *p) {
 	short kocokan = dadu();
-	system("CLS");
+	clearScreen();
 	print();
 	printf("Bot's pawn: ");
 	for (int i = 0; i < 4; i++) {
@@ -352,7 +406,7 @@ void botMain(Team *p) {
 	}
 	while (kocokan == 6) {
 		if (p->otsd < 4) {
-			system("CLS");
+			clearScreen();
 			print();
 			printf("Bot has rolled the dice and get %hd!\n", kocokan);
 			Sleep(1000);
@@ -395,7 +449,7 @@ void orangMain(Team *p) {
 		if (p->otsd < 4) {
 			char pilihan;
 			do {
-				system("CLS");
+				clearScreen();
 				print();
 				printf("Your number: %hd\n", kocokan);
 				printf("1. Set pawn free\n2. Move\n>> ");
@@ -635,7 +689,7 @@ void maju(short kocokan, Team *p) {
     short pilihan;
     char cmd;
     do {
-        system("CLS");
+        clearScreen();
         print();
         printf("Your pawn outside: ");
         for (int i = 0; i < 4; i++) {
@@ -656,7 +710,7 @@ void maju(short kocokan, Team *p) {
         short bonus = dadu();
         printf("\nYour dice: %hd\n", bonus);
         do {
-            system("CLS");
+            clearScreen();
             print();
             printf("Your pawn outside: ");
             for (int i = 0; i < 4; i++) {
@@ -672,14 +726,14 @@ void maju(short kocokan, Team *p) {
         pergerakan(p, bonus, pilihan);
     }
 
-    system("PAUSE");
+    pauseProgram();
 }
 
 void ngocok(Team *Player)
 {
 	char cmd;
 	do {
-		system("CLS");
+		clearScreen();
 		print();
 		printf("Your pawn: ");
 		for (int i = 0; i < 4; i++) {
@@ -703,7 +757,7 @@ void pawnKeluar(short pilihan, Team *player) {
 void ambilPawn(Team *p) {
     short pil;
     do {
-		system("CLS");
+		clearScreen();
 		print();
         printf("\nThe pawn you can take: ");
         for (int i = 0; i < 4; i++) {
@@ -718,5 +772,5 @@ void ambilPawn(Team *p) {
     p->insd--;
     p->otsd++;
 	pawnKeluar(pil, p);
-	system("PAUSE");
+	pauseProgram();
 }
